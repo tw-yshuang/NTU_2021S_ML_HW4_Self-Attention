@@ -11,7 +11,7 @@ class Classifier(nn.Module):
         # TODO:
         #   Change Transformer to Conformer.
         #   https://arxiv.org/abs/2005.08100
-        self.encoder_layer = nn.TransformerEncoderLayer(d_model, nhead=2, dim_feedforward=256, dropout=dropout, norm_first=False)
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model, nhead=2, dim_feedforward=256, dropout=dropout, norm_first=True)
         """ Parameter of nn.TransformerEncoderLayer
             ---
             `d_model`: input dim.
