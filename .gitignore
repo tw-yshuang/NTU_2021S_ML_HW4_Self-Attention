@@ -2,6 +2,7 @@ Data
 Data/
 out/
 .vscode/
+test.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
