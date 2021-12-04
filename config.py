@@ -22,22 +22,24 @@ class DL_Config(object):
     def basic_config(self):
         self.SEED: int = 24
         self.NUM_EPOCH: int = 1000
-        # todo: !!
         self.WARMUP_EPOCH: int = 100
         self.BATCH_SIZE: int = 64
-        self.earlyStop: int or None = None
+        self.earlyStop: int or None = 200
 
         np.random.seed(self.SEED)
         torch.manual_seed(self.SEED)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(self.SEED)
 
-    def net_config(self, net_parameter: int = 600):
+    def net_config(self, net_parameter: int = None, learning_rate: float = 1e-3):
         self.isClassified = True
-        self.net = net.Classifier(n_spks=net_parameter).to(get_device())
+        self.net = net.Classifier
         self.loss_func = nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.AdamW(self.net.parameters(), lr=1e-3)
-        self.scheduler = get_cosine_schedule_with_warmup(self.optimizer, self.WARMUP_EPOCH, self.NUM_EPOCH)
+        self.optimizer = torch.optim.AdamW
+        if net_parameter is not None:
+            self.net = self.net(net_parameter).to(get_device())
+            self.optimizer = self.optimizer(self.net.parameters(), lr=learning_rate)
+            self.lr_scheduler = get_cosine_schedule_with_warmup(self.optimizer, self.WARMUP_EPOCH, self.NUM_EPOCH)
 
     def performance_config(self):
         self.printPerformance: bool = True

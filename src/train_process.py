@@ -74,12 +74,7 @@ class DL_Model(DL_Config):
         self.device = device
 
         if self.saveModel:
-            # loss_func is from pytorch api or make it by self.
-            loss_func_name = (
-                self.loss_func.__class__.__name__ if self.loss_func.__class__.__name__ != 'function' else self.loss_func.__name__
-            )
-            # generate directory by '{date}-{time}_{model}_{loss-function}_{optimizer}_{lr}_{batch-size}'
-            self.saveDir = f'{self.saveDir}{time.strftime("%m%d-%H%M")}_{self.net.__class__.__name__}_{loss_func_name}_lr-{self.optimizer.defaults["lr"]:.1e}_BS-{self.BATCH_SIZE}'
+            self.updateSaveDir = False
 
         self.epoch_start = len(self.performance.train_loss_ls)
         self.TOTAL_EPOCH = self.epoch_start + self.NUM_EPOCH
@@ -105,7 +100,7 @@ class DL_Model(DL_Config):
                 loss = self.loss_func(pred, label)
                 loss.backward()
                 self.optimizer.step()
-                self.scheduler.step()
+                self.lr_scheduler.step()
 
                 # calculate acc & loss
                 sum_loss += loss.item()
@@ -131,17 +126,19 @@ class DL_Model(DL_Config):
                 self.validating(val_loader)
 
             # save model
-            if self.saveModel or saveModel:
+            if saveModel:
                 self.saveModel = True
+                self.updateSaveDir = False
+            if self.saveModel:
                 self.save_process()
 
             # early stop
             if self.earlyStop is not None:
-                # self.epoch_start = self.epoch
-                self.TOTAL_EPOCH = self.earlyStop
-                # TODO: there has something better earlyStop method!! need to find out, go go:!!
-                # self.earlyStop = None
-                # self.training(loader, val_loader)
+                if self.earlyStop == self.epoch - max(self.performance.best_acc_epoch, self.performance.best_loss_epoch):
+                    self.TOTAL_EPOCH = self.epoch + 1
+
+            # when early stop or outside control happen
+            if self.TOTAL_EPOCH == self.epoch + 1:
                 self.save_process()
                 break
 
@@ -202,9 +199,20 @@ class DL_Model(DL_Config):
 
             return result_ls
 
-    def save_process(self):
+    def create_saveDir(self):
+        # loss_func is from pytorch api or make it by self.
+        loss_func_name = (
+            self.loss_func.__class__.__name__ if self.loss_func.__class__.__name__ != 'method' else self.loss_func.__name__
+        )
+
+        # optimizer is from pytorch api or make it by self.
+        optimizer_name = self.optimizer.__class__.__name__ if self.optimizer.__class__.__name__ != 'type' else self.optimizer.__name__
+
+        # generate directory by '{date}-{time}_{model}_{loss-func}_{optimizer}-{lr}_{batch-size}'
+        self.saveDir = f'{self.saveDir}{time.strftime("%m%d-%H%M")}_{self.net.__class__.__name__}_{loss_func_name}_{optimizer_name}-{self.optimizer.defaults["lr"]:.1e}_BS-{self.BATCH_SIZE}'
+
         if self.saveDir is None:
-            raise ProcessLookupError(str_format("Need to type path in saveDir from class: DL_Setting", fore='r'))
+            raise ProcessLookupError(str_format("Need to type path in saveDir from class: DL_Config", fore='r'))
 
         try:
             if not os.path.exists(self.saveDir):
@@ -213,14 +221,22 @@ class DL_Model(DL_Config):
         except OSError:
             raise OSError(str_format(f"Fail to create the directory {self.saveDir} !", fore='r'))
 
+        self.updateSaveDir = True
+
+    def save_process(self):
+        if self.updateSaveDir is False:
+            self.create_saveDir()
+
         # make a parameter mark for model name, if has val_loader in the epoch, use val_loss, else use train_loss
         model_parameter_mark = self.val_loss if self.val_loss != 0.0 else self.train_loss
-        # final epoch
-        if self.epoch + 1 == self.TOTAL_EPOCH:
-            self.save_model(f'{self.saveDir}/final_e{self.epoch+1:03d}_{model_parameter_mark:.3e}.pickle')
+
         # checkpoint
-        elif self.checkpoint > 0 and (self.epoch + 1) % self.checkpoint == 0:
+        if self.checkpoint > 0 and (self.epoch + 1) % self.checkpoint == 0:
             self.save_model(f'{self.saveDir}/e{self.epoch+1:03d}_{model_parameter_mark:.3e}.pickle')
+        # final epoch
+        elif self.epoch + 1 == self.TOTAL_EPOCH:
+            self.save_model(f'{self.saveDir}/final_e{self.epoch+1:03d}_{model_parameter_mark:.3e}.pickle')
+
         # best model
         if self.bestModelSave and self.epoch > 0:
             for key, best_epoch in {'acc': self.performance.best_acc_epoch, 'loss': self.performance.best_loss_epoch}.items():
@@ -232,14 +248,14 @@ class DL_Model(DL_Config):
         if self.onlyParameters:
             net = self.net
             optimizer = self.optimizer
-            scheduler = self.scheduler
+            lr_scheduler = self.lr_scheduler
             self.net = self.net.state_dict()
             self.optimizer = self.optimizer.state_dict()
-            self.scheduler = self.scheduler.state_dict()
+            self.lr_scheduler = self.lr_scheduler.state_dict()
             torch.save(self, path)
             self.net = net
             self.optimizer = optimizer
-            self.scheduler = scheduler
+            self.lr_scheduler = lr_scheduler
         else:
             torch.save(self, path)
 
@@ -255,11 +271,11 @@ class DL_Model(DL_Config):
         if fullNet:
             self.net = model.net
             self.optimizer = model.optimizer
-            self.scheduler = model.scheduler
+            self.lr_scheduler = model.lr_scheduler
         else:
             self.net.load_state_dict(model.net)
             self.optimizer.load_state_dict(model.optimizer)
-            self.scheduler.load_state_dict(model.scheduler)
+            self.lr_scheduler.load_state_dict(model.lr_scheduler)
         self.net.eval()
 
 
