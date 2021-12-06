@@ -1,10 +1,9 @@
 import csv
-import pickle
 import threading
 from typing import List
 from torch.utils.data.dataloader import DataLoader
-from torch.utils.data.dataset import Dataset
 
+import src.net as net
 from submodules.FileTools.WordOperator import str_format
 from src.data_process import get_dataloader
 from src.train_process import DL_Model
@@ -43,21 +42,21 @@ def train(model: DL_Model = None, loader: List[DataLoader] = None, **kwargs):
     if model is None:
         model = DL_Model()
 
-        if loader is not None:
-            train_loader, valid_loader = loader
-        else:
-            train_loader, valid_loader, speaker_num = get_dataloader(
-                data_dir=kwargs['data_dir'], batch_size=model.BATCH_SIZE, n_workers=kwargs['n_workers']
-            )
-            model.net_config(net_parameter=speaker_num)
+    if loader is not None:
+        train_loader, valid_loader = loader
+    else:
+        train_loader, valid_loader, speaker_num = get_dataloader(
+            data_dir=kwargs['data_dir'], batch_size=model.BATCH_SIZE, n_workers=kwargs['n_workers']
+        )
+        model.net_config(net_parameter=speaker_num)
 
     task = TaskThread(model=model, loader=train_loader, val_loader=valid_loader)
     task.execute()
 
 
-def pre_train(model_pickle: str, loader: List[DataLoader] = None, **kwargs):
+def pre_train(model_path: str, loader: List[DataLoader] = None, **kwargs):
     model = DL_Model()
-    model.load_model(model_pickle)
+    model.net = getattr(net, model_path.split('/')[-2].split('_')[1])
 
     if loader is not None:
         train_loader, valid_loader = loader
@@ -66,7 +65,9 @@ def pre_train(model_pickle: str, loader: List[DataLoader] = None, **kwargs):
             data_dir=kwargs['data_dir'], batch_size=model.BATCH_SIZE, n_workers=kwargs['n_workers']
         )
 
-    model.load_model(model_pickle)
+    model.net_config(speaker_num)
+    model.load_model(model_path)
+
     task = TaskThread(model=model, loader=train_loader, val_loader=valid_loader)
     task.execute()
 
@@ -86,11 +87,11 @@ def full_train(model: DL_Model = None, loader: DataLoader = None, **kwargs):
     task.execute()
 
 
-def full_pre_train(model_pickle: str, model: DL_Model = None, loader: DataLoader = None, **kwargs):
+def full_pre_train(model_path: str, model: DL_Model = None, loader: DataLoader = None, **kwargs):
     if model is None:
         model = DL_Model()
 
-    model.load_model(model_pickle)
+    model.load_model(model_path)
 
     if loader is None:
         loader, speaker_num = get_dataloader(
@@ -101,14 +102,40 @@ def full_pre_train(model_pickle: str, model: DL_Model = None, loader: DataLoader
     task.execute()
 
 
+def test(model_path: str):
+    model = DL_Model()
+    model.load_model(model_path)
+    task = TaskThread(
+        model=model,
+        mode='test',
+        loader=get_dataloader('./Data/covid.test.csv', mode='test', batch_size=model.BATCH_SIZE, n_jobs=1),
+    )
+    task.execute()
+
+    with open(f'{model_path[: model_path.rfind(".pickle")]}.csv', 'w') as fp:
+        writer = csv.writer(fp)
+        writer.writerow(['id', 'tested_positive'])
+        for i, p in enumerate(task.result):
+            writer.writerow([i, p])
+
+    print(str_format("done!!", fore='g'))
+
+
 if __name__ == '__main__':
     loader_params = {
         'data_dir': './Data/Dataset',
         'n_workers': 8,
     }
 
-    train(**loader_params)
+    # train(**loader_params)
 
-    # pre_train()
-    # full_train()
-    # full_pre_train()
+    pre_train(
+        model_path='./out/1206-1521_ClassifierWithoutReLU_CrossEntropyLoss_AdamW-1.0e-03_BS-64/best-acc_e062_1.250e-02.pickle',
+        **loader_params,
+    )
+    # full_train(**loader_params)
+    # full_pre_train(**loader_params)
+
+    # model = DL_Model()
+    # model.net = net.ClassifierWithoutReLU
+    # train(model=model, **loader_params)

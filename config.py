@@ -33,10 +33,12 @@ class DL_Config(object):
 
     def net_config(self, net_parameter: int = None, learning_rate: float = 1e-3):
         self.isClassified = True
-        self.net = net.Classifier
         self.loss_func = nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.AdamW
-        if net_parameter is not None:
+
+        if net_parameter is None:
+            self.net = net.Classifier
+            self.optimizer = torch.optim.AdamW
+        else:
             self.net = self.net(net_parameter).to(get_device())
             self.optimizer = self.optimizer(self.net.parameters(), lr=learning_rate)
             self.lr_scheduler = get_cosine_schedule_with_warmup(self.optimizer, self.WARMUP_EPOCH, self.NUM_EPOCH)
